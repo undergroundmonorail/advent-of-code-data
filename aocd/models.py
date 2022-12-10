@@ -13,6 +13,7 @@ import re
 import sys
 import time
 import webbrowser
+import math
 from datetime import datetime
 from datetime import timedelta
 from textwrap import dedent
@@ -225,6 +226,35 @@ class Puzzle(object):
 
     @property
     def example_data(self):
+        def most_similar(input_data, candidates):
+            """
+            Given the input data for the puzzle, determine which of the candidate
+            code blocks is most likely to be example input
+            """
+            def similarity(known, candidate):
+                def avg_length(s):
+                    lines = s.split('\n')
+                    return sum(len(line) for line in lines) / len(lines)
+                
+                score = avg_length(candidate) / avg_length(known)
+                if score > 1:
+                    score **= -1
+                return score
+            
+            # Since many puzzles involve different sections of input that are
+            # formatted differently, we test the scores for each section
+            input_sections = input_data.split('\n\n')
+
+            candidates = [c for c in candidates if len(c.split('\n\n')) == len(input_sections)] or candidates
+
+            candidate_scores = {}
+            for candidate in candidates:
+                candidate_sections = candidate.split('\n\n')
+
+                section_pairs = zip(input_sections, candidate_sections)
+                candidate_scores[candidate] = math.prod(similarity(*s) for s in section_pairs)
+
+            return max(candidate_scores, key=candidate_scores.get)
         try:
             with io.open(self.example_input_data_fname, encoding="utf-8") as f:
                 data = f.read()
@@ -236,7 +266,8 @@ class Puzzle(object):
             return data.rstrip("\r\n")
         soup = self._soup()
         try:
-            data = soup.pre.text
+            code_blocks = soup.findAll(['pre'])
+            data = most_similar(self.input_data, [block.text.strip() for block in code_blocks])
         except Exception:
             log.info("unable to find example data year=%s day=%s", self.year, self.day)
             data = ""
